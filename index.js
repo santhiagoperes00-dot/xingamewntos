@@ -3,7 +3,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const token = '8925041208:AAHP4_na2-fIa1hhQqPZH40v2UpJn0c4Sl8';
 const OWNER_ID = 8308508544;
 
-// Lista de grupos alvo fornecidos pelo usuário
+// Grupos que você quer atacar
 const TARGET_GROUPS = [
     "-1002104174391",
     "-1003310008289",
@@ -22,71 +22,66 @@ const roasts = [
 
 const getRandomRoast = () => roasts[Math.floor(Math.random() * roasts.length)];
 
-// Função para tentar enviar mensagem para múltiplos grupos (Broadcast)
-async function attackAll(alvo) {
-    let results = [];
-    for (const chatId of TARGET_GROUPS) {
+// Comando para listar onde o bot está
+bot.onText(/\/onde_estou/, async (msg) => {
+    if (msg.from.id !== OWNER_ID) return;
+    
+    bot.sendMessage(msg.chat.id, "🔍 Verificando grupos ativos...");
+    
+    let ativos = [];
+    for (const id of TARGET_GROUPS) {
         try {
-            await bot.sendMessage(chatId, `💀 ${alvo}, ${getRandomRoast()}`);
-            results.push(`✅ Enviado para ${chatId}`);
-        } catch (err) {
-            results.push(`❌ Erro em ${chatId}: ${err.message}`);
+            const chat = await bot.getChat(id);
+            ativos.push(`✅ **${chat.title || 'Grupo'}** (ID: \`${id}\`)`);
+        } catch (e) {
+            ativos.push(`❌ **Não encontrado** (ID: \`${id}\`) - O bot precisa ser adicionado aqui!`);
         }
     }
-    return results.join('\n');
-}
-
-bot.onText(/\/start/, (msg) => {
-    if (msg.from.id !== OWNER_ID) return;
-    bot.sendMessage(msg.chat.id, 
-        "🔥 **Bot de Ataque Total**\n\n" +
-        "Comandos atualizados:\n" +
-        "1. `/roast <alvo>` - Xinga no grupo atual.\n" +
-        "2. `/atacar_todos <alvo>` - Manda xingamento em TODOS os grupos da sua lista.\n" +
-        "3. `/spam <chat_id> <alvo> <vezes>` - Spam em um grupo específico."
-    );
-});
-
-// Comando Roast (Melhorado para responder mesmo se não for comando /)
-bot.on('message', (msg) => {
-    if (!msg.text) return;
     
-    // Se o dono mandar algo que comece com @ no grupo, o bot xinga (opcional, mas ajuda se o / falhar)
-    if (msg.from.id === OWNER_ID && msg.text.startsWith('@')) {
-        bot.sendMessage(msg.chat.id, `💀 ${msg.text}, ${getRandomRoast()}`).catch(() => {});
-    }
+    bot.sendMessage(msg.chat.id, `📊 **Status dos Grupos Alvo:**\n\n${ativos.join('\n')}\n\n💡 **Dica:** Se o grupo estiver com ❌, adicione o bot no grupo e mande um /start lá.`);
 });
 
-bot.onText(/\/roast(?: (.+))?/, (msg, match) => {
-    if (msg.from.id !== OWNER_ID) return;
-    const alvo = match[1] || "alguém";
-    bot.sendMessage(msg.chat.id, `💀 ${alvo}, ${getRandomRoast()}`).catch(e => {
-        bot.sendMessage(msg.chat.id, `❌ Não consegui xingar aqui: ${e.message}`);
-    });
-});
-
+// Comando de Ataque em Massa
 bot.onText(/\/atacar_todos (.+)/, async (msg, match) => {
     if (msg.from.id !== OWNER_ID) return;
     const alvo = match[1];
+    
     bot.sendMessage(msg.chat.id, `🚀 Iniciando ataque em massa para: ${alvo}...`);
-    const report = await attackAll(alvo);
-    bot.sendMessage(msg.chat.id, `📊 **Relatório de Ataque:**\n${report}`);
+    
+    for (const chatId of TARGET_GROUPS) {
+        try {
+            await bot.sendMessage(chatId, `💀 ${alvo}, ${getRandomRoast()}`);
+            await bot.sendMessage(msg.chat.id, `✅ Sucesso no grupo \`${chatId}\``);
+        } catch (err) {
+            if (err.message.includes('chat not found')) {
+                await bot.sendMessage(msg.chat.id, `❌ Erro no grupo \`${chatId}\`: O bot não está nesse grupo ou o ID está errado.`);
+            } else {
+                await bot.sendMessage(msg.chat.id, `❌ Erro no grupo \`${chatId}\`: ${err.message}`);
+            }
+        }
+        await new Promise(r => setTimeout(r, 1000)); // Espera 1s entre grupos
+    }
+    
+    bot.sendMessage(msg.chat.id, "🏁 Ataque finalizado.");
 });
 
-bot.onText(/\/spam (\-?\d+) (.+) (\d+)/, async (msg, match) => {
-    if (msg.from.id !== OWNER_ID) return;
-    const chatId = match[1];
-    const alvo = match[2];
-    const vezes = Math.min(parseInt(match[3]), 20);
-
-    bot.sendMessage(msg.chat.id, `💣 Bombardeando ${chatId}...`);
-    for (let i = 0; i < vezes; i++) {
-        await bot.sendMessage(chatId, `💀 ${alvo}, ${getRandomRoast()}`).catch(() => {});
-        await new Promise(r => setTimeout(r, 800));
+// Captura automática quando o bot é adicionado a um novo grupo
+bot.on('new_chat_members', (msg) => {
+    const botId = 8925041208; // ID do seu bot extraído do token
+    const addedBot = msg.new_chat_members.find(m => m.id === botId);
+    
+    if (addedBot) {
+        bot.sendMessage(OWNER_ID, `📢 **Fui adicionado a um novo grupo!**\n\n📌 Nome: ${msg.chat.title}\n🆔 ID: \`${msg.chat.id}\`\n\nAgora você pode usar /atacar_todos ou /spam aqui.`);
     }
-    bot.sendMessage(msg.chat.id, `✅ Bombardeio finalizado.`);
+});
+
+// Comando padrão de xingamento
+bot.onText(/\/roast(?: (.+))?/, (msg, match) => {
+    if (msg.from.id !== OWNER_ID) return;
+    const alvo = match[1] || "alguém";
+    bot.sendMessage(msg.chat.id, `💀 ${alvo}, ${getRandomRoast()}`).catch(() => {});
 });
 
 bot.on('polling_error', (error) => console.log(`[Erro]: ${error.message}`));
 
-console.log('Bot atualizado e rodando.');
+console.log('Bot pronto para diagnóstico.');
