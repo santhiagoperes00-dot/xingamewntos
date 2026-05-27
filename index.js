@@ -1,8 +1,14 @@
 const TelegramBot = require('node-telegram-bot-api');
 
-// Token e ID do Dono (Mantidos conforme original)
 const token = '8925041208:AAHP4_na2-fIa1hhQqPZH40v2UpJn0c4Sl8';
 const OWNER_ID = 8308508544;
+
+// Lista de grupos alvo fornecidos pelo usuário
+const TARGET_GROUPS = [
+    "-1002104174391",
+    "-1003310008289",
+    "-1003134663443"
+];
 
 const bot = new TelegramBot(token, { polling: true });
 
@@ -14,65 +20,73 @@ const roasts = [
     "MEU PAU BATE NO UTERO DA TUA MINA"
 ];
 
-// Função para escolher um xingamento aleatório
 const getRandomRoast = () => roasts[Math.floor(Math.random() * roasts.length)];
+
+// Função para tentar enviar mensagem para múltiplos grupos (Broadcast)
+async function attackAll(alvo) {
+    let results = [];
+    for (const chatId of TARGET_GROUPS) {
+        try {
+            await bot.sendMessage(chatId, `💀 ${alvo}, ${getRandomRoast()}`);
+            results.push(`✅ Enviado para ${chatId}`);
+        } catch (err) {
+            results.push(`❌ Erro em ${chatId}: ${err.message}`);
+        }
+    }
+    return results.join('\n');
+}
 
 bot.onText(/\/start/, (msg) => {
     if (msg.from.id !== OWNER_ID) return;
-    bot.sendMessage(
-        msg.chat.id,
-        `🔥 **Bot de Xingamentos Ativado**\n\n` +
-        `👑 Dono: \`${OWNER_ID}\`\n\n` +
-        `**Comandos:**\n` +
-        `1. \`/roast <alvo>\` - Xinga alguém no grupo atual.\n` +
-        `2. \`/ataque <chat_id> <alvo>\` - Envia um xingamento para um grupo específico pelo ID (mesmo sem você estar lá, mas o bot precisa estar).\n` +
-        `3. \`/spam <chat_id> <alvo> <vezes>\` - Envia vários xingamentos seguidos.`
+    bot.sendMessage(msg.chat.id, 
+        "🔥 **Bot de Ataque Total**\n\n" +
+        "Comandos atualizados:\n" +
+        "1. `/roast <alvo>` - Xinga no grupo atual.\n" +
+        "2. `/atacar_todos <alvo>` - Manda xingamento em TODOS os grupos da sua lista.\n" +
+        "3. `/spam <chat_id> <alvo> <vezes>` - Spam em um grupo específico."
     );
 });
 
-// Comando Roast Padrão
-bot.onText(/\/roast(?: (.+))?/, (msg, match) => {
-    if (msg.from.id !== OWNER_ID) {
-        return bot.sendMessage(msg.chat.id, "❌ Só o dono pode usar seu fdp arrombado otario do crl.");
+// Comando Roast (Melhorado para responder mesmo se não for comando /)
+bot.on('message', (msg) => {
+    if (!msg.text) return;
+    
+    // Se o dono mandar algo que comece com @ no grupo, o bot xinga (opcional, mas ajuda se o / falhar)
+    if (msg.from.id === OWNER_ID && msg.text.startsWith('@')) {
+        bot.sendMessage(msg.chat.id, `💀 ${msg.text}, ${getRandomRoast()}`).catch(() => {});
     }
-
-    const alvo = match[1] || "alguém";
-    bot.sendMessage(msg.chat.id, `💀 ${alvo}, ${getRandomRoast()}`).catch(e => console.log("Erro no roast:", e.message));
 });
 
-// Comando de Ataque Remoto (Funciona se o bot estiver no grupo alvo)
-bot.onText(/\/ataque (\-?\d+) (.+)/, (msg, match) => {
+bot.onText(/\/roast(?: (.+))?/, (msg, match) => {
     if (msg.from.id !== OWNER_ID) return;
-
-    const chatId = match[1];
-    const alvo = match[2];
-
-    bot.sendMessage(chatId, `💀 ${alvo}, ${getRandomRoast()}`)
-        .then(() => bot.sendMessage(msg.chat.id, `✅ Ataque enviado para ${chatId}`))
-        .catch(err => bot.sendMessage(msg.chat.id, `❌ Falha no ataque: ${err.message}\n(O bot pode ter sido banido ou não está no grupo)`));
+    const alvo = match[1] || "alguém";
+    bot.sendMessage(msg.chat.id, `💀 ${alvo}, ${getRandomRoast()}`).catch(e => {
+        bot.sendMessage(msg.chat.id, `❌ Não consegui xingar aqui: ${e.message}`);
+    });
 });
 
-// Comando de Spam
+bot.onText(/\/atacar_todos (.+)/, async (msg, match) => {
+    if (msg.from.id !== OWNER_ID) return;
+    const alvo = match[1];
+    bot.sendMessage(msg.chat.id, `🚀 Iniciando ataque em massa para: ${alvo}...`);
+    const report = await attackAll(alvo);
+    bot.sendMessage(msg.chat.id, `📊 **Relatório de Ataque:**\n${report}`);
+});
+
 bot.onText(/\/spam (\-?\d+) (.+) (\d+)/, async (msg, match) => {
     if (msg.from.id !== OWNER_ID) return;
-
     const chatId = match[1];
     const alvo = match[2];
-    const vezes = Math.min(parseInt(match[3]), 10); // Limite de 10 para evitar flood block rápido
+    const vezes = Math.min(parseInt(match[3]), 20);
 
-    bot.sendMessage(msg.chat.id, `🚀 Iniciando spam de ${vezes} mensagens em ${chatId}...`);
-
+    bot.sendMessage(msg.chat.id, `💣 Bombardeando ${chatId}...`);
     for (let i = 0; i < vezes; i++) {
         await bot.sendMessage(chatId, `💀 ${alvo}, ${getRandomRoast()}`).catch(() => {});
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Delay de 1s para não ser banido pelo Telegram instantaneamente
+        await new Promise(r => setTimeout(r, 800));
     }
-    
-    bot.sendMessage(msg.chat.id, `🏁 Spam finalizado em ${chatId}`);
+    bot.sendMessage(msg.chat.id, `✅ Bombardeio finalizado.`);
 });
 
-// Tratamento de erros global para evitar que o bot caia
-bot.on('polling_error', (error) => {
-    console.log(`[ERRO] Polling: ${error.code} - ${error.message}`);
-});
+bot.on('polling_error', (error) => console.log(`[Erro]: ${error.message}`));
 
-console.log('Bot rodando. Pronto para os xingamentos.');
+console.log('Bot atualizado e rodando.');
